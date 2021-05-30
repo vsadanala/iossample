@@ -1,0 +1,76 @@
+pipeline
+{
+environment {
+BRANCH = ‘Branch Name’
+REPO = ‘git@XXXXX.DOMAIN.com:iOS-Applications/XXXXX-XXX-iOS.git’
+SCHEMA = ‘XXX-BANK’
+CONFIGURATION = ‘BANK’
+APPCENTER_TOKEN = ‘XXXXXX’
+APPCENTER_APP = ‘XXXXX-XXX-iOS’
+}
+agent {
+node {
+label ‘iMac’
+}
+}
+stages{
+stage(‘Cleaning the workspace’) {
+steps {
+sh “rm -rf ${WORKSPACE}/*”
+}
+}
+stage(‘Clone the Library’) {
+steps{
+git branch: “${BRANCH}”, credentialsId: ‘YOUR-CredentialsID’, url: “${REPO}”
+}
+}
+stage (‘Xcode version to 10.1 and Pod install’) {
+steps {
+sh ‘sudo xcode-select -switch /Applications/Xcode10.1.app’
+sh ‘cd ${WORKSPACE}’
+sh ‘pod install’
+}
+}
+stage(‘Build’) {
+steps{
+prodbuildRelease ()
+}
+}
+stage (‘Archive and Generate ipa’) {
+steps {
+archiveandipa ()
+}
+}
+stage(‘Upload to Nexus’) {
+steps{
+uploadToProdenexus ()
+}
+}
+stage (‘Upload to app center’) {
+steps {
+input message: “Upload to App center?”, ok: “Promote”
+uploadtoAppCenter ()
+}
+}
+}
+}
+def prodbuildRelease () {
+sh ‘/usr/bin/xcodebuild -scheme ${SCHEMA} -workspace ${WORKSPACE}/XXXXX.xcworkspace -configuration ${CONFIGURATION} clean archive -archivePath ${WORKSPACE}/build/${SCHEMA}.xcarchive’
+}
+def archiveandipa () {
+sh ‘/usr/bin/xcodebuild -exportArchive -archivePath ${WORKSPACE}/build/${SCHEMA}.xcarchive -exportPath ${WORKSPACE}/archive -exportOptionsPlist ${WORKSPACE}/ExportOptions/XXX-${CONFIGURATION}.plist’
+}
+def uploadToNexus() {
+nexusArtifactUploader artifacts: [[artifactId: ‘XXXXX-XXX-iOS’, classifier: ‘ipa’, file: “/Users/XXXXX/workspace/XXXXX-XXX-iOS-Pipeline/archive/${SCHEMA}.ipa”, type: ‘ipa’]], credentialsId: ‘YOUR-CredentialsID’, groupId: ‘XXXXX/iOS’, nexusUrl: ‘nexus.DOMAIN.com’, nexusVersion: ‘nexus3’, protocol: ‘https’, repository: ‘mobileapps-raw’, version: ‘$BUILD_ID’
+}
+def uploadtoAppCenter () {
+sh label: ‘’, script: ‘’’curl -X POST — header \’Content-Type: application/json\’ — header \’Accept: application/json\’ — header \”X-API-Token: $APPCENTER_TOKEN\” \”https://api.appcenter.ms/v0.1/apps/DOMAIN/$APPCENTER_APP/release_uploads\” > tmp
+
+x=`awk -F \’”\’ \’{print $4}\’ tmp` && url=`awk -F \’”\’ \’{print $8}\’ tmp`
+curl -F “ipa=’@/Users/XXXXX/workspace/XXXXX-XXX-iOS-Pipeline/archive/${SCHEMA}.ipa"' $url
+curl -X PATCH — header \’Content-Type: application/json\’ — header \’Accept: application/json\’ — header \”X-API-Token: $APPCENTER_TOKEN\” -d \’{ “status”: “committed” }\’ “https://api.appcenter.ms/v0.1/apps/DOMAIN/$APPCENTER_APP/release_uploads/$x"> tmp
+
+release_id=`awk -F \’”\’ \’{print $4}\’ tmp`
+curl -X PATCH — header \’Content-Type: application/json\’ — header \’Accept: application/json\’ — header \”X-API-Token: $APPCENTER_TOKEN\” -d \’{ “destination_name”: “BetaTestersPublic”, “release_notes”: “App Center Release” }\’ “https://api.appcenter.ms/v0.1/apps/DOMAIN/$APPCENTER_APP/releases/$release_id"'''
+
+}
