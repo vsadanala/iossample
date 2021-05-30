@@ -1,18 +1,6 @@
-pipeline{
-  agent any
-  stages{
-    stage ('checkout'){
-      steps{
-        echo "checkout"
-      }
+node('iMac') {
+        stage('build') {
+                sh 'xcodebuild -scheme "Numero" -configuration "Debug" build test -destination "platform=iOS Simulator,name=iPhone 8"'
     }
-    stage ('build') {
-      steps{
-        sh 'xcodebuild -scheme Numero -configuration Debug build test -destination 'platform=iOS Simulator,name=iPhone 8''
-      }
-    }
-
-    }
- }
-
+}
 
